@@ -57,7 +57,7 @@ PBL 팀 프로젝트의 GitHub 협업 환경을 준비하는 단계이다. 기�
 | seowon | 강서원 작업 브랜치 |
 | hyeongjun | 김형준 작업 브랜치 |
 
-세 작업 브랜치는 최초 main과 동일한 커밋에서 시작한다. 원격 저장소는 하나만 사용한다.
+현재 main과 hyeongjun만 생성한다. youngwoong과 seowon은 각 팀원이 main에서 직접 생성한다. 원격 저장소는 하나만 사용한다.
 
 ## 개발 시작 방법
 
@@ -66,10 +66,10 @@ Collaborator 초대를 수락한 뒤 저장소를 복제한다.
 ```bash
 git clone https://github.com/rlagudwnsdla1114-ctrl/campus-meal-alert.git
 cd campus-meal-alert
-git switch youngwoong
+git switch -c youngwoong origin/main
 ```
 
-마지막 줄의 브랜치 이름은 본인의 담당 브랜치로 바꾼다. 각자 Git 이름과 이메일을 확인한 뒤 작업한다.
+강영웅과 강서원은 마지막 줄의 브랜치 이름을 본인의 담당 브랜치로 바꾸어 생성하고, 최초 push 시 `git push -u origin 브랜치이름`을 실행한다. 김형준은 이미 생성된 브랜치를 `git switch hyeongjun`으로 선택한다. 각자 Git 이름과 이메일을 확인한 뒤 작업한다.
 
 ```bash
 git config user.name
