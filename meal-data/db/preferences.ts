@@ -153,3 +153,156 @@ export function savePreference(
     };
   }
 }
+
+export function listPreferences(
+  db: DatabaseSync,
+  ctx: AuthContext
+): Result<FoodPreference[]> {
+  try {
+    if (!ctx?.userId ||
+        !db.prepare('SELECT id FROM users WHERE id = ?').get(ctx.userId)) {
+      return {
+        ok: false,
+        error: { code: 'UNAUTHENTICATED', message: '로그인이 필요합니다.' }
+      };
+    }
+
+    const rows = db.prepare(`
+      SELECT
+        f.id, f.name, f.category,
+        p.preference, p.reason, p.note,
+        a.allergen_id
+      FROM user_food_preferences p
+      JOIN foods f ON f.id = p.food_id
+      LEFT JOIN preference_allergens a
+        ON a.user_id = p.user_id AND a.food_id = p.food_id
+      WHERE p.user_id = ?
+      ORDER BY f.name, f.id, a.allergen_id
+    `).all(ctx.userId);
+
+    const items = new Map<string, FoodPreference>();
+
+    for (const row of rows) {
+      const id = String(row.id);
+      let item = items.get(id);
+
+      if (!item) {
+        item = {
+          food: {
+            id,
+            name: String(row.name),
+            category: row.category as Food['category']
+          },
+          preference: row.preference as FoodPreference['preference'],
+          reason: row.reason as FoodPreference['reason'],
+          note: row.note as string | null,
+          allergenIds: []
+        };
+        items.set(id, item);
+      }
+
+      if (row.allergen_id !== null) {
+        item.allergenIds.push(String(row.allergen_id));
+      }
+    }
+
+    return { ok: true, data: [...items.values()] };
+  } catch {
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: '취향 조회에 실패했습니다.' }
+    };
+  }
+}
+
+export function getAllergyProfile(
+  db: DatabaseSync,
+  ctx: AuthContext
+): Result<import('../design/contracts.ts').UserAllergyProfile> {
+  try {
+    if (!ctx?.userId) {
+      return {
+        ok: false,
+        error: { code: 'UNAUTHENTICATED', message: '로그인이 필요합니다.' }
+      };
+    }
+
+    const rows = db.prepare(`
+      SELECT
+        u.id AS user_id,
+        COALESCE(p.status, 'not_set') AS status,
+        a.allergen_id
+      FROM users u
+      LEFT JOIN user_allergy_profiles p ON p.user_id = u.id
+      LEFT JOIN user_allergens a ON a.user_id = u.id
+      WHERE u.id = ?
+      ORDER BY a.allergen_id
+    `).all(ctx.userId);
+
+    if (rows.length === 0) {
+      return {
+        ok: false,
+        error: { code: 'UNAUTHENTICATED', message: '등록된 회원이 아닙니다.' }
+      };
+    }
+
+    return {
+      ok: true,
+      data: {
+        userId: ctx.userId,
+        status: rows[0].status as
+          'not_set' | 'none_declared' | 'registered',
+        allergenIds: rows
+          .filter(row => row.allergen_id !== null)
+          .map(row => String(row.allergen_id))
+      }
+    };
+  } catch {
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: '알레르기 조회에 실패했습니다.' }
+    };
+  }
+}
+
+export function removePreference(
+  db: DatabaseSync,
+  ctx: AuthContext,
+  foodId: string
+): Result<{ removed: boolean }> {
+  try {
+    db.exec('PRAGMA foreign_keys = ON');
+
+    if (!ctx?.userId ||
+        !db.prepare('SELECT id FROM users WHERE id = ?').get(ctx.userId)) {
+      return {
+        ok: false,
+        error: { code: 'UNAUTHENTICATED', message: '로그인이 필요합니다.' }
+      };
+    }
+
+    if (typeof foodId !== 'string' || !foodId.trim()) {
+      return {
+        ok: false,
+        error: { code: 'INVALID_INPUT', message: '음식을 선택하세요.' }
+      };
+    }
+
+    // 연결된 preference_allergens는 외래 키로 함께 삭제됩니다.
+    // user_allergens와 음식 사전은 삭제하지 않습니다.
+    const result = db.prepare(`
+      DELETE FROM user_food_preferences
+      WHERE user_id = ? AND food_id = ?
+    `).run(ctx.userId, foodId);
+
+    return {
+      ok: true,
+      data: { removed: Number(result.changes) > 0 }
+    };
+  } catch {
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: '취향 삭제에 실패했습니다.' }
+    };
+  }
+}
