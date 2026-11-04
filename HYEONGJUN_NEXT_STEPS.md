@@ -1,3 +1,184 @@
+<!-- REQUIREMENTS_CHECKLIST_START -->
+
+## 요청사항 구현 체크리스트
+
+담당 데이터 모듈과 기본 비교·추천 기준 구현은 완료했고 테스트를 통과했다.
+아래 완료 표시는 모듈 구현 기준이며, 전체 앱 연동 완료를 의미하지 않는다.
+
+### 1. 실제 식단 데이터 — 완료
+
+- [x] 날짜 기준 식단 조회
+- [x] 아침·점심·저녁 음식 목록을 각각 배열로 반환
+- [x] 휴무·운영 미확인·미등록 상태 구분
+- [x] 식단 등록·수정·삭제
+- [x] 중복 음식·잘못된 입력 검사
+
+사용 함수: getDailyMeals(db, { cafeteriaId, date })
+
+반환 데이터:
+- date: 조회 날짜
+- cafeteriaId: 식당 ID
+- meals.breakfast: 아침 음식명 배열
+- meals.lunch: 점심 음식명 배열
+- meals.dinner: 저녁 음식명 배열
+- mealStatus: 각 끼니의 운영 상태
+
+### 2. 사용자별 선호 음식 목록 — 완료
+
+- [x] 사용자 ID별 데이터 분리
+- [x] 선호 음식 등록·수정·삭제·조회
+- [x] 추천 입력에 liked 음식명 배열 제공
+
+사용 함수:
+- savePreference(): 등록
+- updateLikedFood(): 선호 음식 변경
+- removePreference(): 삭제
+- listPreferences(): 취향 조회
+- getRecommendationInput(): 추천용 배열 구성
+
+주의: 저장할 때는 음식명이 아닌 기존 foodId를 사용한다.
+음식 검색·선택 API는 별도 연결이 필요하다.
+
+### 3. 사용자별 비선호 음식 목록 — 완료
+
+- [x] 사용자별 비선호 음식 저장·조회·삭제
+- [x] 비선호 이유 저장: 취향·식감 / 알레르기 / 기타
+- [x] 알레르기 선택 시 성분 ID 연결
+- [x] 추천 입력에 disliked 음식명 배열 제공
+
+비선호 저장은 savePreference()를 사용한다.
+알레르기를 이유로 저장할 때는 유효한 allergenIds가 필요하다.
+
+주의: 비선호 음식명 제외 기능은 구현되어 있다.
+알레르기 저장 기능도 구현되어 있지만, 메뉴 성분과 대조하는 추천 필터는 아직 연결되지 않았다.
+취향을 삭제해도 사용자 전체 알레르기 정보는 자동 삭제하지 않는다.
+
+### 4. 선호 음식과 학식 메뉴 비교 — 모듈 구현 완료
+
+- [x] 비교한 선호 음식: matchedFood
+- [x] 학식 메뉴: menu
+- [x] 일치 유형: exact / partial / similar
+- [x] 점수: score
+- [x] 완전 일치·부분 일치 비교
+- [x] AI에 전달할 나머지 메뉴 분리
+- [x] 전달받은 AI 유사 추천 후보 검증·병합
+
+사용 함수:
+- prepareComparison(input, policy)
+- finalizeRecommendations(input, aiCandidates, policy)
+
+기본 점수:
+- 완전 일치: 1.0
+- 부분 일치: 0.9
+- 유사 일치: AI가 반환한 점수를 검증해 사용
+
+남은 연결:
+- [ ] 실제 AI 호출과 공통 비교 모듈을 하나의 실행 흐름으로 연결
+
+### 5. 추천 기준 — 모듈 구현 완료
+
+- [x] 유사도 최소 점수: minSimilarityScore
+- [x] 추천 정렬 기준: sortBy
+- [x] 비선호 음식 제외 기준: dislikedMatch
+- [x] 잘못된 정책 값 검사
+- [x] 중복 추천 제거·정렬
+
+기본 정책:
+- minSimilarityScore: 0.7
+- sortBy: meal_then_score
+- dislikedMatch: exact_or_contains
+
+선택 가능한 정렬 기준:
+- meal_then_score: 끼니 순서 후 점수순
+- score_desc: 점수 내림차순
+
+선택 가능한 비선호 제외 기준:
+- exact: 이름 완전 일치 시 제외
+- exact_or_contains: 이름 완전 일치 또는 포함 관계 시 제외
+
+최소 유사도는 AI 유사 추천에 적용하며 완전·부분 일치에는 적용하지 않는다.
+
+주의: 기존 AI recommend.ts의 고정 기준을 전부 교체한 상태는 아니다.
+통합 호출부에서 공통 정책을 적용하도록 연결해야 한다.
+
+### 6. 최종 추천 결과 — 규격 및 목록 처리 구현 완료
+
+- [x] 날짜: date
+- [x] 추천 처리 상태: status
+- [x] 끼니: meal
+- [x] 추천 메뉴: menu
+- [x] 연결된 선호 음식: matchedFood
+- [x] 일치 유형: type
+- [x] 점수: score
+- [x] 추천 이유: reason
+- [x] 추천 목록 검증·중복 제거·정렬
+
+최종 응답 구조:
+- date
+- status
+- recommendations 배열
+  - meal
+  - menu
+  - matchedFood
+  - type
+  - score
+  - reason
+
+status 의미:
+- ok: 정상 처리
+- fallback: AI 처리 실패 시 기본 비교 결과로 대체
+
+추천이 없다는 이유만으로 fallback을 사용하지 않는다.
+finalizeRecommendations()는 추천 목록을 반환하므로 호출부에서 date와 status를 함께 구성한다.
+
+남은 연결:
+- [ ] DB 조회 → 기본 비교 → 실제 AI 호출 → 최종 응답 통합 검증
+- [ ] 모바일 화면에 최종 추천 결과 표시
+- [ ] 추천 알림 및 알림 선택 시 화면 이동
+
+### 테스트 확인
+
+- [x] 데이터 모듈 테스트 통과
+- [x] 추천 공통 모듈 테스트 6개 통과
+- [x] AI 모듈 테스트 42개 통과
+- [x] AI 및 연결된 공통 코드 타입 검사 통과
+- [ ] 모바일·DB·AI 전체 연동 테스트
+
+### 형준이 연결할 때 확인할 내용
+
+1. 모바일에서 node:sqlite 모듈을 직접 import하지 않는다.
+   Node 서버의 HTTP API를 통해 데이터 모듈을 호출한다.
+   HTTP API는 아직 별도 구현이 필요하다.
+
+2. 인증된 사용자 ID를 ctx.userId로 전달한다.
+   현재 데이터 함수는 전달받은 사용자 ID를 사용하며 로그인 자체를 구현하지 않는다.
+
+3. 메인 식단 화면은 getDailyMeals() 결과를 사용한다.
+   표시용 식단 조회와 추천용 입력 조회는 구분한다.
+
+4. 추천 입력은 getRecommendationInput()으로 구성한다.
+   미등록·운영 미확인 끼니 또는 검토 미확정 음식이 있으면 추천 입력이 차단될 수 있다.
+
+5. prepareComparison()으로 기본 비교와 AI 입력을 분리한다.
+   서원의 AI 모듈에 남은 후보를 전달하고,
+   반환된 후보를 finalizeRecommendations()로 검증한다.
+
+6. 추천 메뉴의 싫어요 저장에는 실제 추천 메뉴의 foodId를 사용한다.
+   연결된 선호 음식 matchedFood의 ID를 대신 저장하지 않는다.
+   현재 추천 결과는 음식명 중심이므로 DB의 음식 ID와 연결하는 처리가 필요하다.
+
+7. 알레르기 성분 기반 제외, 음식 검색 API,
+   사용자 전체 알레르기 설정 변경 API는 추가 구현 또는 담당자 협의가 필요하다.
+
+8. prototype 화면은 localStorage를 사용하는 시연용 UI이다.
+   실제 DB·로그인·모바일 앱과 연결된 상태는 아니다.
+
+인수인계 상태:
+담당 데이터 관리·기본 비교·추천 기준 모듈 구현 및 테스트 완료.
+실제 AI 실행 흐름과 모바일 화면·알림 연결은 통합 작업이 필요하다.
+
+<!-- REQUIREMENTS_CHECKLIST_END -->
+
 # 형준용 데이터 모듈 사용 설명서
 
 이 문서는 실제 구현된 함수의 호출 방법이다.
@@ -458,184 +639,3 @@ meal-data/prototype/index.html
     npm --prefix mobile run lint
 
 Expo 코드를 수정할 때 mobile/AGENTS.md와 실제 설치 버전 문서를 먼저 확인한다.
-
-<!-- REQUIREMENTS_CHECKLIST_START -->
-
-## 요청사항 구현 체크리스트
-
-담당 데이터 모듈과 기본 비교·추천 기준 구현은 완료했고 테스트를 통과했다.
-아래 완료 표시는 모듈 구현 기준이며, 전체 앱 연동 완료를 의미하지 않는다.
-
-### 1. 실제 식단 데이터 — 완료
-
-- [x] 날짜 기준 식단 조회
-- [x] 아침·점심·저녁 음식 목록을 각각 배열로 반환
-- [x] 휴무·운영 미확인·미등록 상태 구분
-- [x] 식단 등록·수정·삭제
-- [x] 중복 음식·잘못된 입력 검사
-
-사용 함수: getDailyMeals(db, { cafeteriaId, date })
-
-반환 데이터:
-- date: 조회 날짜
-- cafeteriaId: 식당 ID
-- meals.breakfast: 아침 음식명 배열
-- meals.lunch: 점심 음식명 배열
-- meals.dinner: 저녁 음식명 배열
-- mealStatus: 각 끼니의 운영 상태
-
-### 2. 사용자별 선호 음식 목록 — 완료
-
-- [x] 사용자 ID별 데이터 분리
-- [x] 선호 음식 등록·수정·삭제·조회
-- [x] 추천 입력에 liked 음식명 배열 제공
-
-사용 함수:
-- savePreference(): 등록
-- updateLikedFood(): 선호 음식 변경
-- removePreference(): 삭제
-- listPreferences(): 취향 조회
-- getRecommendationInput(): 추천용 배열 구성
-
-주의: 저장할 때는 음식명이 아닌 기존 foodId를 사용한다.
-음식 검색·선택 API는 별도 연결이 필요하다.
-
-### 3. 사용자별 비선호 음식 목록 — 완료
-
-- [x] 사용자별 비선호 음식 저장·조회·삭제
-- [x] 비선호 이유 저장: 취향·식감 / 알레르기 / 기타
-- [x] 알레르기 선택 시 성분 ID 연결
-- [x] 추천 입력에 disliked 음식명 배열 제공
-
-비선호 저장은 savePreference()를 사용한다.
-알레르기를 이유로 저장할 때는 유효한 allergenIds가 필요하다.
-
-주의: 비선호 음식명 제외 기능은 구현되어 있다.
-알레르기 저장 기능도 구현되어 있지만, 메뉴 성분과 대조하는 추천 필터는 아직 연결되지 않았다.
-취향을 삭제해도 사용자 전체 알레르기 정보는 자동 삭제하지 않는다.
-
-### 4. 선호 음식과 학식 메뉴 비교 — 모듈 구현 완료
-
-- [x] 비교한 선호 음식: matchedFood
-- [x] 학식 메뉴: menu
-- [x] 일치 유형: exact / partial / similar
-- [x] 점수: score
-- [x] 완전 일치·부분 일치 비교
-- [x] AI에 전달할 나머지 메뉴 분리
-- [x] 전달받은 AI 유사 추천 후보 검증·병합
-
-사용 함수:
-- prepareComparison(input, policy)
-- finalizeRecommendations(input, aiCandidates, policy)
-
-기본 점수:
-- 완전 일치: 1.0
-- 부분 일치: 0.9
-- 유사 일치: AI가 반환한 점수를 검증해 사용
-
-남은 연결:
-- [ ] 실제 AI 호출과 공통 비교 모듈을 하나의 실행 흐름으로 연결
-
-### 5. 추천 기준 — 모듈 구현 완료
-
-- [x] 유사도 최소 점수: minSimilarityScore
-- [x] 추천 정렬 기준: sortBy
-- [x] 비선호 음식 제외 기준: dislikedMatch
-- [x] 잘못된 정책 값 검사
-- [x] 중복 추천 제거·정렬
-
-기본 정책:
-- minSimilarityScore: 0.7
-- sortBy: meal_then_score
-- dislikedMatch: exact_or_contains
-
-선택 가능한 정렬 기준:
-- meal_then_score: 끼니 순서 후 점수순
-- score_desc: 점수 내림차순
-
-선택 가능한 비선호 제외 기준:
-- exact: 이름 완전 일치 시 제외
-- exact_or_contains: 이름 완전 일치 또는 포함 관계 시 제외
-
-최소 유사도는 AI 유사 추천에 적용하며 완전·부분 일치에는 적용하지 않는다.
-
-주의: 기존 AI recommend.ts의 고정 기준을 전부 교체한 상태는 아니다.
-통합 호출부에서 공통 정책을 적용하도록 연결해야 한다.
-
-### 6. 최종 추천 결과 — 규격 및 목록 처리 구현 완료
-
-- [x] 날짜: date
-- [x] 추천 처리 상태: status
-- [x] 끼니: meal
-- [x] 추천 메뉴: menu
-- [x] 연결된 선호 음식: matchedFood
-- [x] 일치 유형: type
-- [x] 점수: score
-- [x] 추천 이유: reason
-- [x] 추천 목록 검증·중복 제거·정렬
-
-최종 응답 구조:
-- date
-- status
-- recommendations 배열
-  - meal
-  - menu
-  - matchedFood
-  - type
-  - score
-  - reason
-
-status 의미:
-- ok: 정상 처리
-- fallback: AI 처리 실패 시 기본 비교 결과로 대체
-
-추천이 없다는 이유만으로 fallback을 사용하지 않는다.
-finalizeRecommendations()는 추천 목록을 반환하므로 호출부에서 date와 status를 함께 구성한다.
-
-남은 연결:
-- [ ] DB 조회 → 기본 비교 → 실제 AI 호출 → 최종 응답 통합 검증
-- [ ] 모바일 화면에 최종 추천 결과 표시
-- [ ] 추천 알림 및 알림 선택 시 화면 이동
-
-### 테스트 확인
-
-- [x] 데이터 모듈 테스트 통과
-- [x] 추천 공통 모듈 테스트 6개 통과
-- [x] AI 모듈 테스트 42개 통과
-- [x] AI 및 연결된 공통 코드 타입 검사 통과
-- [ ] 모바일·DB·AI 전체 연동 테스트
-
-### 형준이 연결할 때 확인할 내용
-
-1. 모바일에서 node:sqlite 모듈을 직접 import하지 않는다.
-   Node 서버의 HTTP API를 통해 데이터 모듈을 호출한다.
-   HTTP API는 아직 별도 구현이 필요하다.
-
-2. 인증된 사용자 ID를 ctx.userId로 전달한다.
-   현재 데이터 함수는 전달받은 사용자 ID를 사용하며 로그인 자체를 구현하지 않는다.
-
-3. 메인 식단 화면은 getDailyMeals() 결과를 사용한다.
-   표시용 식단 조회와 추천용 입력 조회는 구분한다.
-
-4. 추천 입력은 getRecommendationInput()으로 구성한다.
-   미등록·운영 미확인 끼니 또는 검토 미확정 음식이 있으면 추천 입력이 차단될 수 있다.
-
-5. prepareComparison()으로 기본 비교와 AI 입력을 분리한다.
-   서원의 AI 모듈에 남은 후보를 전달하고,
-   반환된 후보를 finalizeRecommendations()로 검증한다.
-
-6. 추천 메뉴의 싫어요 저장에는 실제 추천 메뉴의 foodId를 사용한다.
-   연결된 선호 음식 matchedFood의 ID를 대신 저장하지 않는다.
-   현재 추천 결과는 음식명 중심이므로 DB의 음식 ID와 연결하는 처리가 필요하다.
-
-7. 알레르기 성분 기반 제외, 음식 검색 API,
-   사용자 전체 알레르기 설정 변경 API는 추가 구현 또는 담당자 협의가 필요하다.
-
-8. prototype 화면은 localStorage를 사용하는 시연용 UI이다.
-   실제 DB·로그인·모바일 앱과 연결된 상태는 아니다.
-
-인수인계 상태:
-담당 데이터 관리·기본 비교·추천 기준 모듈 구현 및 테스트 완료.
-실제 AI 실행 흐름과 모바일 화면·알림 연결은 통합 작업이 필요하다.
-
-<!-- REQUIREMENTS_CHECKLIST_END -->
