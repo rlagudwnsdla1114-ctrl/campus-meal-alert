@@ -51,3 +51,8 @@ MemoryStorage는 메모리만 사용하므로 종료하면 사라집니다.
 5. 성능: 소규모 JSON 전체 저장에서 날짜별/사용자별 레코드와 트랜잭션을 지원하는 DB로 전환.
 
 현재 모바일 UI, 기기 영구 저장, 학교 식단 자동 수집, AI 실제 호출, 알림은 통합 전입니다. 이 파일들은 로컬 구현본이며 GitHub 업로드는 연결 계정 쓰기 권한 부족으로 완료되지 않았습니다.
+
+## DB·인터페이스 설계 초안 (v0.1)
+`design/DESIGN.md`부터 읽으세요. 공통 계약은 `design/contracts.ts`, 음식 셀 정리와 검토 검증은 `design/import-review.ts`, SQLite 구조는 `db/schema.sql`입니다.
+추가 검증: 프로젝트 루트에서 `python meal-data/db/test_schema.py`.
+기존 파일 저장 기능은 유지하며 DB 접근 계층·인증·전체 PDF 추출은 다음 구현 단계입니다.
