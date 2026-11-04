@@ -306,3 +306,114 @@ export function removePreference(
     };
   }
 }
+
+export function updateLikedFood(
+  db: DatabaseSync,
+  ctx: AuthContext,
+  input: { previousFoodId: string; foodId: string }
+): Result<FoodPreference> {
+  if (!ctx?.userId) {
+    return {
+      ok: false,
+      error: { code: 'UNAUTHENTICATED', message: '로그인이 필요합니다.' }
+    };
+  }
+
+  if (
+    !input ||
+    typeof input.previousFoodId !== 'string' ||
+    !input.previousFoodId.trim() ||
+    typeof input.foodId !== 'string' ||
+    !input.foodId.trim()
+  ) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_INPUT', message: '기존 음식과 새 음식을 선택하세요.' }
+    };
+  }
+
+  let started = false;
+
+  try {
+    db.exec('PRAGMA foreign_keys=ON');
+    db.exec('BEGIN IMMEDIATE');
+    started = true;
+
+    const fail = (
+      code: 'UNAUTHENTICATED' | 'NOT_FOUND' | 'INVALID_INPUT' | 'CONFLICT',
+      message: string
+    ): Result<FoodPreference> => {
+      db.exec('ROLLBACK');
+      started = false;
+      return { ok: false, error: { code, message } };
+    };
+
+    if (!db.prepare('SELECT id FROM users WHERE id=?').get(ctx.userId)) {
+      return fail('UNAUTHENTICATED', '등록된 회원이 아닙니다.');
+    }
+
+    const previous = db.prepare(`
+      SELECT preference FROM user_food_preferences
+      WHERE user_id=? AND food_id=?
+    `).get(ctx.userId, input.previousFoodId);
+
+    if (!previous) {
+      return fail('NOT_FOUND', '수정할 선호 음식을 찾을 수 없습니다.');
+    }
+
+    if (previous.preference !== 'liked') {
+      return fail('INVALID_INPUT', '선호 음식만 변경할 수 있습니다.');
+    }
+
+    const food = db.prepare(`
+      SELECT id,name,category FROM foods WHERE id=?
+    `).get(input.foodId) as unknown as Food | undefined;
+
+    if (!food) {
+      return fail('NOT_FOUND', '새 음식을 찾을 수 없습니다.');
+    }
+
+    if (input.previousFoodId !== input.foodId) {
+      const duplicate = db.prepare(`
+        SELECT preference FROM user_food_preferences
+        WHERE user_id=? AND food_id=?
+      `).get(ctx.userId, input.foodId);
+
+      if (duplicate) {
+        return fail(
+          'CONFLICT',
+          '새 음식이 이미 선호 또는 비선호 목록에 있습니다.'
+        );
+      }
+
+      db.prepare(`
+        UPDATE user_food_preferences
+        SET food_id=?, reason=NULL, note=NULL,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE user_id=? AND food_id=? AND preference='liked'
+      `).run(input.foodId, ctx.userId, input.previousFoodId);
+    }
+
+    db.exec('COMMIT');
+    started = false;
+
+    return {
+      ok: true,
+      data: {
+        food,
+        preference: 'liked',
+        reason: null,
+        note: null,
+        allergenIds: []
+      }
+    };
+  } catch {
+    if (started) {
+      try { db.exec('ROLLBACK'); } catch {}
+    }
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: '선호 음식 수정에 실패했습니다.' }
+    };
+  }
+}
