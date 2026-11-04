@@ -7,7 +7,40 @@ export type Result<T> = { ok: true; data: T } | { ok: false; error: { code: Erro
 /** 인증 계층에서 확인한 사용자 정보. 요청 본문의 userId를 그대로 신뢰하지 않습니다. */
 export interface AuthContext { userId: string }
 export interface Food { id: string; name: string; category: FoodCategory }
-export interface FoodPreference { food: Food; preference: Preference }
+export type DislikeReason = 'taste_texture' | 'allergy' | 'other';
+
+export type SavePreferenceInput =
+  | {
+      foodId: string;
+      preference: 'liked';
+    }
+  | {
+      foodId: string;
+      preference: 'disliked';
+      reason: 'taste_texture' | 'other';
+      note?: string;
+    }
+  | {
+      foodId: string;
+      preference: 'disliked';
+      reason: 'allergy';
+      allergenIds: string[];
+      note?: string;
+    };
+
+export interface FoodPreference {
+  food: Food;
+  preference: Preference;
+  reason: DislikeReason | null;
+  note: string | null;
+  allergenIds: string[];
+}
+
+export interface UserAllergyProfile {
+  userId: string;
+  status: 'not_set' | 'none_declared' | 'registered';
+  allergenIds: string[];
+}
 export interface MealItem { foodId: string; rawText: string; note?: string }
 export interface MealRecord {
   id: string; cafeteriaId: string; date: string; mealType: MealType;
@@ -30,9 +63,19 @@ export interface ImportDraft {
 
 /** 다음 단계에서 구현할 모듈 계약입니다. DB 연결과 인증이 구현되었다는 의미는 아닙니다. */
 export interface PreferenceModule {
-  set(ctx: AuthContext, input: { foodId: string; preference: Preference }): Promise<Result<FoodPreference>>;
-  remove(ctx: AuthContext, foodId: string): Promise<Result<{ removed: boolean }>>;
-  list(ctx: AuthContext): Promise<Result<FoodPreference[]>>;
+  set(
+    ctx: AuthContext,
+    input: SavePreferenceInput
+  ): Promise<Result<FoodPreference>>;
+
+  remove(
+    ctx: AuthContext,
+    foodId: string
+  ): Promise<Result<{ removed: boolean }>>;
+
+  list(
+    ctx: AuthContext
+  ): Promise<Result<FoodPreference[]>>;
 }
 export interface FoodCatalogModule {
   create(input: { name: string; category: FoodCategory }): Promise<Result<Food>>;

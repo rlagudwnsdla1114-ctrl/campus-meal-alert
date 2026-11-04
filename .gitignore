@@ -7,3 +7,5 @@
 .DS_Store
 Thumbs.db
 Desktop.ini
+# 로컬 데이터베이스
+/meal-data/local-data/
