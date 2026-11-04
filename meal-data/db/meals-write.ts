@@ -233,3 +233,120 @@ export function saveManualMeal(
     };
   }
 }
+
+export function deleteManualMeal(
+  db: DatabaseSync,
+  input: Pick<
+    SaveMealInput,
+    'cafeteriaId' | 'date' | 'mealType' | 'editReason'
+  >
+): Result<{ removed: boolean; mealId: string | null }> {
+  const invalid = (message: string) => ({
+    ok: false as const,
+    error: { code: 'INVALID_INPUT' as const, message }
+  });
+
+  if (
+    !input ||
+    typeof input.cafeteriaId !== 'string' ||
+    !input.cafeteriaId.trim() ||
+    typeof input.date !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
+    !['breakfast','lunch','dinner'].includes(input.mealType) ||
+    typeof input.editReason !== 'string' ||
+    !input.editReason.trim()
+  ) return invalid('식당·날짜·끼니·삭제 사유를 확인하세요.');
+
+  const day = new Date(input.date + 'T00:00:00Z');
+  if (
+    !Number.isFinite(day.getTime()) ||
+    day.toISOString().slice(0,10) !== input.date
+  ) return invalid('존재하지 않는 날짜입니다.');
+
+  let started = false;
+
+  try {
+    db.exec('PRAGMA foreign_keys=ON');
+    db.exec('BEGIN IMMEDIATE');
+    started = true;
+
+    if (!db.prepare(
+      'SELECT id FROM cafeterias WHERE id=?'
+    ).get(input.cafeteriaId)) {
+      db.exec('ROLLBACK');
+      started = false;
+      return {
+        ok: false,
+        error: { code: 'NOT_FOUND', message: '식당을 찾을 수 없습니다.' }
+      };
+    }
+
+    const meal = db.prepare(`
+      SELECT * FROM meals
+      WHERE cafeteria_id=? AND date=? AND meal_type=?
+    `).get(input.cafeteriaId, input.date, input.mealType);
+
+    // 이미 없는 식단을 다시 삭제해도 오류로 취급하지 않습니다.
+    if (!meal) {
+      db.exec('COMMIT');
+      started = false;
+      return { ok: true, data: { removed: false, mealId: null } };
+    }
+
+    const mealId = String(meal.id);
+
+    const hasDetails = db.prepare(`
+      SELECT 1 FROM sqlite_master
+      WHERE type='table' AND name='meal_details'
+    `).get();
+
+    const snapshot = {
+      meal,
+      items: db.prepare(`
+        SELECT i.*, f.name AS food_name
+        FROM meal_items i
+        JOIN foods f ON f.id=i.food_id
+        WHERE i.meal_id=?
+        ORDER BY i.sort_order
+      `).all(mealId),
+      details: hasDetails ? db.prepare(
+        'SELECT * FROM meal_details WHERE meal_id=?'
+      ).get(mealId) ?? null : null,
+      source: meal.source_id ? db.prepare(
+        'SELECT * FROM meal_sources WHERE id=?'
+      ).get(meal.source_id) ?? null : null
+    };
+
+    // 삭제 이력은 meals의 외래 키로 연결하지 않아 삭제 후에도 남습니다.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS meal_delete_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        meal_id TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        before_json TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    db.prepare(`
+      INSERT INTO meal_delete_log(meal_id,reason,before_json)
+      VALUES (?,?,?)
+    `).run(mealId, input.editReason.trim(), JSON.stringify(snapshot));
+
+    // meal_items와 meal_details는 외래 키로 함께 삭제됩니다.
+    db.prepare('DELETE FROM meals WHERE id=?').run(mealId);
+
+    db.exec('COMMIT');
+    started = false;
+
+    return { ok: true, data: { removed: true, mealId } };
+  } catch {
+    if (started) {
+      try { db.exec('ROLLBACK'); } catch {}
+    }
+    return {
+      ok: false,
+      error: { code: 'STORAGE_ERROR', message: '식단 삭제에 실패했습니다.' }
+    };
+  }
+}
